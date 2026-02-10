@@ -50,38 +50,35 @@
 #                 st.error(f"An error occurred: {e}")
 
 import streamlit as st
-import requests
-import os
+from groq import Groq
 
-st.title("Demo ChatBot Solar & Sons")
+st.set_page_config(page_title="AI Assistant", layout="centered")
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
+st.title("🌞 Solar Assistant Chatbot")
 
-# ------------------------
-# Function: check ollama
-# ------------------------
-def ollama_available():
-    try:
-        r = requests.get("http://localhost:11434")
-        return r.status_code == 200
-    except:
-        return False
-
-USE_OLLAMA = ollama_available()
+# Initialize Groq client
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # Chat history
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": "Hello! I'm your AI assistant. Ask me anything."
+        }
+    ]
 
-# Show history
+# Display history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-prompt = st.chat_input("Type your message here...")
+# User input
+prompt = st.chat_input("Type your question...")
 
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.write(prompt)
 
@@ -89,49 +86,24 @@ if prompt:
         placeholder = st.empty()
         full_response = ""
 
-        # ------------------------
-        # LOCAL OLLAMA MODE
-        # ------------------------
-        if USE_OLLAMA:
+        with st.spinner("Thinking..."):
             try:
-                response = requests.post(
-                    OLLAMA_URL,
-                    json={
-                        "model": "deepseek-r1:1.5b",
-                        "messages": st.session_state.messages,
-                        "stream": True
-                    },
-                    stream=True,
-                    timeout=60
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",  # ✅ FIXED MODEL
+                    messages=st.session_state.messages,
+                    stream=True
                 )
 
-                for line in response.iter_lines():
-                    if line:
-                        chunk = line.decode("utf-8")
-                        if '"content":"' in chunk:
-                            content = chunk.split('"content":"')[1].split('"')[0]
-                            full_response += content
-                            placeholder.write(full_response + "▌")
-
-                placeholder.write(full_response)
+                for chunk in response:
+                    content = chunk.choices[0].delta.content or ""
+                    full_response += content
+                    placeholder.write(full_response + "▌")
 
             except Exception as e:
-                st.error(f"Ollama error: {e}")
+                full_response = f"⚠️ Error: {e}"
 
-        # ------------------------
-        # CLOUD FALLBACK MODE
-        # ------------------------
-        else:
-            full_response = (
-                "⚠ Local AI server not connected.\n\n"
-                "This chatbot runs using **offline LLM (Ollama)**.\n"
-                "For full demo, run locally on the developer machine."
-            )
-            placeholder.write(full_response)
+        placeholder.write(full_response)
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": full_response}
-        )
-
-
-
+    st.session_state.messages.append(
+        {"role": "assistant", "content": full_response}
+    )
